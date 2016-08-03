@@ -2,52 +2,73 @@
 #include <linux/kernel.h>
 #include <linux/slab.h>
 
+// specify info about our slab cache should be setup
 #define SLABNAME "slabdemo"
 #define SLABALIGN 8
 #define SLABFLAGS 0
 
-typedef struct
+// just some module-specific stuff
+#define NUMOBJECTS 128
+
+typedef struct slabthing_struct
 {
   char foo; 
   char bar; 
-  char baz; 
+  char baz;
+  struct slabthing_struct *next;
 } slabthing;
 
-struct kmem_cache_t *slabthing_cache;
+struct kmem_cache *slabthing_cache;
 
-slabthing *thing_one;
-slabthing *thing_two;
-slabthing *thing_three;
+slabthing *head;
 
 int init_module(void)
 {
+  int i;
+  slabthing *s;
+  slabthing *sprev;
+
   printk(KERN_INFO "init slabdemo module\n");
 
   // create the slab cache
   slabthing_cache = kmem_cache_create(SLABNAME, sizeof(slabthing), SLABALIGN, SLABFLAGS, NULL);
 
   // allocate two objects in our slab
-  thing_one = (slabthing *)kmem_cache_alloc(slabthing_cache, SLABFLAGS);
-  thing_two = (slabthing *)kmem_cache_alloc(slabthing_cache, SLABFLAGS);
-  thing_three = (slabthing *)kmem_cache_alloc(slabthing_cache, SLABFLAGS);
-
+  for (i = 0; i < NUMOBJECTS; i++) {
+    s = (slabthing *)kmem_cache_alloc(slabthing_cache, SLABFLAGS);
+    s->next = NULL;
+    if (i == 0) {
+      head = s;
+      sprev = s;
+    } else {
+      sprev->next = s;
+      sprev = s;
+    }
+  }
+    
   // dump addresses - they should be next to each other
-  printk(KERN_INFO "thing_one:   0x%p\n", thing_one);
-  printk(KERN_INFO "thing_two:   0x%p\n", thing_two);
-  printk(KERN_INFO "thing_three: 0x%p\n", thing_three);
-  
+  s = head;
+  while(s) {
+    printk(KERN_INFO "allocated slabthing: 0x%p\n", s);
+    s = s->next;
+  }
+    
   return 0;
 }
 
 void cleanup_module(void)
 {
+  slabthing *s = head;
+
   printk(KERN_INFO "cleanup slabdemo module\n");
 
   // free our two objects
-  kmem_cache_free(slabthing_cache, thing_one);
-  kmem_cache_free(slabthing_cache, thing_two);
-  kmem_cache_free(slabthing_cache, thing_three);
-
+  while(s) {
+    printk(KERN_INFO "freed slabthing: 0x%p\n", s);
+    kmem_cache_free(slabthing_cache, s);
+    s = s->next;
+  }
+  
   // destroy the value
   kmem_cache_destroy(slabthing_cache);
 }
